@@ -109,17 +109,17 @@ log.info """
 	 
 	
 	output:
-	tuple val(meta), path("${meta.sample}_negatives.bed")
+	path("background_negatives.bed")
 	
 	script:
     """
     chrombpnet prep nonpeaks \
-     -g ~/chrombpnet_tutorial/data/downloads/hg38.fa \
-     -p ~/chrombpnet_tutorial/data/peaks_no_blacklist.bed \
-     -c  ~/chrombpnet_tutorial/data/downloads/hg38.chrom.sizes \
-     -fl ~/chrombpnet_tutorial/data/splits/fold_0.json \
-     -br ~/chrombpnet_tutorial/data/downloads/blacklist.bed.gz \
-     -o ~/chrombpnet_tutorial/data/output
+     -g $fasta \
+     -p $peaks \
+     -c  $chrom_sizes \
+     -fl $chrom_splits \
+     -br $exclude_regions \
+     -o background
     """
 }
 
@@ -221,7 +221,7 @@ workflow {
 //     | view
 	
 	prep_splits("${baseDir}/${params.chrom_sizes}")
-	
+	prep_nonpeaks()
 	
 // 	fq_input_ch = Channel.fromPath(params.samplesheet)
 // 	| splitCsv( header:true )
