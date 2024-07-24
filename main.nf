@@ -9,6 +9,11 @@ log.info """
 	.stripIndent()
 
 /*
+ * generate empty dummy files to use for optional parameters
+ */
+
+
+/*
  * merge sorted and indexed input bam files by sample
  */
  
@@ -93,6 +98,26 @@ log.info """
 }
 
 /*
+ * combine peaks, blacklist, and exclude regions to get combined list of exclusion regions for generating nonpeaks
+ */
+
+  process combine_exclude_regions {
+	container = "quay.io/biocontainers/bedtools:2.31.1--hf5e1c6e_2"
+	
+	input:
+	path("peaks/*_peaks.txt")
+	 
+	
+	output:
+	path("combined_exclude_regions.bed")
+	
+	script:
+    """
+    cat peaks/*_peaks.txt | cut -f 1,2,3 > combined_exclude_regions.bed
+    """
+}
+
+/*
  * generate non-peak regions for training bias model
  */
 
@@ -127,36 +152,36 @@ log.info """
  * train bias model
  */
  
- process train_bias {
-	container = "kundajelab/chrombpnet:latest"
-	
-	input:
-	path(bam)
-	path(bam_index)
-	path(peaks)
-	path(background_regions)
-	path(fasta)
-	path(chrom_sizes)
-	path(chrom_splits)
-	
-	
-	output:
-	tuple val(meta), path("${meta.sample}_peaks.narrowPeak")
-	
-	script:
-    """
-    chrombpnet bias pipeline \
-        -ibam ~/chrombpnet_tutorial/data/downloads/merged.bam \
-        -d "ATAC" \
-        -g $genome_fasta \
-        -c $chrom_sizes \
-        -p $peaks \
-        -n $background_regions \
-        -fl $chrom_splits \
-        -b 0.5 \
-        -o . \
-        -fp $meta.sample
-    """
+ // process train_bias {
+// 	container = "kundajelab/chrombpnet:latest"
+// 	
+// 	input:
+// 	path(bam)
+// 	path(bam_index)
+// 	path(peaks)
+// 	path(background_regions)
+// 	path(fasta)
+// 	path(chrom_sizes)
+// 	path(chrom_splits)
+// 	
+// 	
+// 	output:
+// 	tuple val(meta), path("${meta.sample}_peaks.narrowPeak")
+// 	
+// 	script:
+//     """
+//     chrombpnet bias pipeline \
+//         -ibam ~/chrombpnet_tutorial/data/downloads/merged.bam \
+//         -d "ATAC" \
+//         -g $genome_fasta \
+//         -c $chrom_sizes \
+//         -p $peaks \
+//         -n $background_regions \
+//         -fl $chrom_splits \
+//         -b 0.5 \
+//         -o . \
+//         -fp $meta.sample
+//     """
  
 /*
  * train chrombpnet
@@ -221,28 +246,32 @@ workflow {
 //     | view
 	
 	prep_splits("${baseDir}/${params.chrom_sizes}")
-	prep_nonpeaks()
 	
-// 	fq_input_ch = Channel.fromPath(params.samplesheet)
-// 	| splitCsv( header:true )
-// 	| filter { it["reads"].endsWith("fastq.gz") }
-//     | map { fq_row ->
-//         fq_meta = fq_row.subMap('sample')
-//         [
-//         	fq_meta, 
-//         	file(fq_row.reads, checkIfExists: true)]
-//     }
-// 
-// 
-//        
-//     fq_ch = bam2fastq(bam_ch)
-//     .mix(fq_input_ch)
-// 
-//     split_fq_ch = split_fastq(fq_ch)
-//     .transpose()
-//     
-//     polylox_ch = parse_polylox_barcodes(split_fq_ch)
-//     | groupTuple
-//     | merge_polylox_barcodes
-//     | compute_pgen
+	if (params.blacklist) {
+	blacklist_ch = channel.fromPath(params.blacklist)
+	}
+	else {
+	blacklist_ch = channel.empty()
+	}
+	
+	if (params.background_exclude_regions) {
+	exclude_ch = channel.fromPath(params.background_exclude_regions)
+	}
+	else {
+	exclude_ch = channel.empty()
+	}
+	
+	
+	combine_exclude_ch = Channel.fromPath(params.samplesheet)
+	| splitCsv(header:true)
+	| map { row -> 
+	peaks = [file(row.peaks, checkIfExists: true)] 
+	}
+	| mix(blacklist_ch, exclude_ch)
+	| collect
+	
+	combine_exclude_regions(combine_exclude_ch)
+	
+	
+
 }
