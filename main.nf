@@ -97,6 +97,8 @@ log.info """
     """
 }
 
+
+
 /*
  * combine peaks, blacklist, and exclude regions to get combined list of exclusion regions for generating nonpeaks
  */
@@ -122,11 +124,10 @@ log.info """
  */
 
   process prep_nonpeaks {
-	tag "$meta.sample"
 	container = "kundajelab/chrombpnet:latest"
 	
 	input:
-	path(peaks)
+	tuple val(meta), path(bam), path(bam_index), path(peaks)
 	path(fasta)
 	path(chrom_sizes)
 	path(chrom_splits)
@@ -139,8 +140,8 @@ log.info """
 	script:
     """
     chrombpnet prep nonpeaks \
+ 	 -p $peaks \
      -g $fasta \
-     -p $peaks \
      -c  $chrom_sizes \
      -fl $chrom_splits \
      -br $exclude_regions \
@@ -152,36 +153,35 @@ log.info """
  * train bias model
  */
  
- // process train_bias {
-// 	container = "kundajelab/chrombpnet:latest"
-// 	
-// 	input:
-// 	path(bam)
-// 	path(bam_index)
-// 	path(peaks)
-// 	path(background_regions)
-// 	path(fasta)
-// 	path(chrom_sizes)
-// 	path(chrom_splits)
-// 	
-// 	
-// 	output:
-// 	tuple val(meta), path("${meta.sample}_peaks.narrowPeak")
-// 	
-// 	script:
-//     """
-//     chrombpnet bias pipeline \
-//         -ibam ~/chrombpnet_tutorial/data/downloads/merged.bam \
-//         -d "ATAC" \
-//         -g $genome_fasta \
-//         -c $chrom_sizes \
-//         -p $peaks \
-//         -n $background_regions \
-//         -fl $chrom_splits \
-//         -b 0.5 \
-//         -o . \
-//         -fp $meta.sample
-//     """
+ process train_bias {
+	container = "kundajelab/chrombpnet:latest"
+	
+	input:
+	tuple val(meta), path(bam), path(bam_index), path(peaks)
+	path(background_regions)
+	path(fasta)
+	path(chrom_sizes)
+	path(chrom_splits)
+	
+	
+	output:
+	tuple val(meta), path("${meta.sample}_peaks.narrowPeak")
+	
+	script:
+    """
+    chrombpnet bias pipeline \
+        -ibam $bam \
+        -d "ATAC" \
+        -g $fasta \
+        -c $chrom_sizes \
+        -p $peaks \
+        -n $background_regions \
+        -fl $chrom_splits \
+        -b 0.5 \
+        -o . \
+        -fp bias
+    """
+ }
  
 /*
  * train chrombpnet
@@ -243,7 +243,7 @@ workflow {
 //     | groupTuple 
 //     | merge_bam
 //     | call_peaks
-//     | view
+
 	
 	prep_splits("${baseDir}/${params.chrom_sizes}")
 	
@@ -272,6 +272,34 @@ workflow {
 	
 	combine_exclude_regions(combine_exclude_ch)
 	
-	
 
+	bias_ch = Channel.fromPath(params.samplesheet)
+	| splitCsv(header:true)
+	| filter { it["sample"] == params.bias_sample }
+	 | map { bam_row ->
+        bam_meta = bam_row.subMap('sample')
+        [
+        	bam_meta, 
+        	file(bam_row.reads, checkIfExists: true),
+            file(bam_row.read_index, checkIfExists: true),
+            file(bam_row.peaks, checkIfExists: true)]
+    }
+    | view
+
+	
+	prep_nonpeaks(
+	bias_ch, 
+	"${baseDir}/${params.fasta}", 
+	"${baseDir}/${params.chrom_sizes}", 
+	prep_splits.out,
+	combine_exclude_regions.out
+	)
+
+	train_bias(
+	bias_ch,
+	prep_nonpeaks.out,
+	"${baseDir}/${params.fasta}", 
+	"${baseDir}/${params.chrom_sizes}", 
+	prep_splits.out
+	)
 }
