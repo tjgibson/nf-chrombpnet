@@ -255,17 +255,19 @@ workflow {
 //     | call_peaks
 
 	
-	prep_splits("${baseDir}/${params.chrom_sizes}")
+	prep_splits(
+	file("${launchDir}/${params.chrom_sizes}", checkIfExists: true)
+	)
 	
 	if (params.blacklist) {
-	blacklist_ch = channel.fromPath(params.blacklist)
+	blacklist_ch = channel.fromPath(params.blacklist, checkIfExists: true)
 	}
 	else {
 	blacklist_ch = channel.empty()
 	}
 	
 	if (params.background_exclude_regions) {
-	exclude_ch = channel.fromPath(params.background_exclude_regions)
+	exclude_ch = channel.fromPath(params.background_exclude_regions, checkIfExists: true)
 	}
 	else {
 	exclude_ch = channel.empty()
@@ -298,8 +300,8 @@ workflow {
 	
 	prep_nonpeaks(
 	bias_ch, 
-	"${baseDir}/${params.fasta}", 
-	"${baseDir}/${params.chrom_sizes}", 
+	"${launchDir}/${params.fasta}", 
+	"${launchDir}/${params.chrom_sizes}", 
 	prep_splits.out,
 	combine_exclude_regions.out
 	)
@@ -307,8 +309,8 @@ workflow {
 	train_bias(
 	bias_ch,
 	prep_nonpeaks.out,
-	"${baseDir}/${params.fasta}", 
-	"${baseDir}/${params.chrom_sizes}", 
+	"${launchDir}/${params.fasta}", 
+	"${launchDir}/${params.chrom_sizes}", 
 	prep_splits.out
 	)
 	
@@ -326,8 +328,8 @@ workflow {
 		train_chrombpnet(
 	train_ch,
 	prep_nonpeaks.out,
-	"${baseDir}/${params.fasta}", 
-	"${baseDir}/${params.chrom_sizes}", 
+	"${launchDir}/${params.fasta}", 
+	"${launchDir}/${params.chrom_sizes}", 
 	prep_splits.out,
 	train_bias.out.model
 	)
