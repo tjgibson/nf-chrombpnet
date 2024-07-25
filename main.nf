@@ -17,54 +17,54 @@ log.info """
  * merge sorted and indexed input bam files by sample
  */
  
- process merge_bam {
-	tag "$meta.sample"
-	conda "bioconda::samtools=1.20"
-	container = "quay.io/biocontainers/samtools:1.20--h50ea8bc_0"
-	
-	input:
-	tuple val(meta), path(bam), path(bam_index)
-	
-	output:
-	tuple val(meta), 
-	path("${meta.sample}_merged.bam"), 
-	path("${meta.sample}_merged.bam.bai")
-	
-	script:
-    """
-    samtools merge -o ${meta.sample}_merged.bam --threads $task.cpus $bam
-    samtools index ${meta.sample}_merged.bam
-    """
-}
+ // process merge_bam {
+// 	tag "$meta.sample"
+// 	conda "bioconda::samtools=1.20"
+// 	container = "quay.io/biocontainers/samtools:1.20--h50ea8bc_0"
+// 	
+// 	input:
+// 	tuple val(meta), path(bam), path(bam_index)
+// 	
+// 	output:
+// 	tuple val(meta), 
+// 	path("${meta.sample}_merged.bam"), 
+// 	path("${meta.sample}_merged.bam.bai")
+// 	
+// 	script:
+//     """
+//     samtools merge -o ${meta.sample}_merged.bam --threads $task.cpus $bam
+//     samtools index ${meta.sample}_merged.bam
+//     """
+// }
  
  
 /*
  * Call peaks on merged samples
  */
  
-  process call_peaks {
-	tag "$meta.sample"
-	conda "bioconda::macs3=3.01"
-	container = "quay.io/biocontainers/macs3:3.0.1--py312he57d009_3"
-	
-	input:
-	tuple val(meta), path(bam), path(bam_index)
-	
-	output:
-	tuple val(meta), 
-	path("${meta.sample}_peaks.narrowPeak")
-	
-	script:
-    """
-    macs3 callpeak \
-    -t $bam \
-    -n $meta.sample \
-    -f BAMPE \
-    --keep-dup all \
-    -g $params.macs_genome_size \
-    --call-summits
-    """
-}
+ //  process call_peaks {
+// 	tag "$meta.sample"
+// 	conda "bioconda::macs3=3.01"
+// 	container = "quay.io/biocontainers/macs3:3.0.1--py312he57d009_3"
+// 	
+// 	input:
+// 	tuple val(meta), path(bam), path(bam_index)
+// 	
+// 	output:
+// 	tuple val(meta), 
+// 	path("${meta.sample}_peaks.narrowPeak")
+// 	
+// 	script:
+//     """
+//     macs3 callpeak \
+//     -t $bam \
+//     -n $meta.sample \
+//     -f BAMPE \
+//     --keep-dup all \
+//     -g $params.macs_genome_size \
+//     --call-summits
+//     """
+// }
  
 
 /*
@@ -154,6 +154,7 @@ log.info """
  */
  
  process train_bias {
+    publishDir "${params.results_dir}/bias_model/", mode: 'copy'
 	container = "kundajelab/chrombpnet:latest"
 	
 	input:
@@ -165,7 +166,8 @@ log.info """
 	
 	
 	output:
-	tuple val(meta), path("${meta.sample}_peaks.narrowPeak")
+	path("models/bias.h5"), emit: model
+	tuple path("evaluation/overall_report.html"), path("evaluation/overall_report.pdf"), emit: reports
 	
 	script:
     """
@@ -187,30 +189,38 @@ log.info """
  * train chrombpnet
  */
 
-//  process train_chrombpnet {
-// 	tag "$meta.sample"
-// 	container = "kundajelab/chrombpnet:latest"
-// 	
-// 	input:
-// 	tuple val(meta), path(bam), path(bam_index)
-// 	
-// 	output:
-// 	tuple val(meta), 
-// 	path("${meta.sample}_peaks.narrowPeak")
-// 	
-// 	script:
-//     """
-//     chrombpnet pipeline \
-//         -ibam ~/chrombpnet_tutorial/data/downloads/merged.bam \
-//         -d "ATAC" \
-//         -g ~/chrombpnet_tutorial/data/downloads/hg38.fa \
-//         -c ~/chrombpnet_tutorial/data/downloads/hg38.chrom.sizes \
-//         -p ~/chrombpnet_tutorial/data/peaks_no_blacklist.bed \
-//         -n ~/chrombpnet_tutorial/data/output_negatives.bed \
-//         -fl ~/chrombpnet_tutorial/data/splits/fold_0.json \
-//         -b ~/chrombpnet_tutorial/bias_model/ENCSR868FGK_bias_fold_0.h5 \
-//         -o ~/chrombpnet_tutorial/chrombpnet_model/
-//     """
+ process train_chrombpnet {
+	tag "$meta.sample"
+	publishDir "${params.results_dir}/${meta.sample}/", mode: 'copy'
+	container = "kundajelab/chrombpnet:latest"
+	
+	input:
+	tuple val(meta), path(bam), path(bam_index), path(peaks)
+	path(background_regions)
+	path(fasta)
+	path(chrom_sizes)
+	path(chrom_splits)
+	path(bias_model)
+	
+	output:
+	tuple val(meta), 
+	path("models/*.h5")
+	tuple path("evaluation/overall_report.html"), path("evaluation/overall_report.pdf"), emit: reports
+	
+	script:
+    """
+    chrombpnet pipeline \
+        -ibam $bam \
+        -d "ATAC" \
+        -g $fasta \
+        -c $chrom_sizes \
+        -p $peaks \
+        -n $background_regions \
+        -fl $chrom_splits \
+        -b $bias_model \
+        -o .
+    """
+}
 
 /*
  * generate predicted bigWigs
@@ -284,7 +294,6 @@ workflow {
             file(bam_row.read_index, checkIfExists: true),
             file(bam_row.peaks, checkIfExists: true)]
     }
-    | view
 
 	
 	prep_nonpeaks(
@@ -301,5 +310,25 @@ workflow {
 	"${baseDir}/${params.fasta}", 
 	"${baseDir}/${params.chrom_sizes}", 
 	prep_splits.out
+	)
+	
+	train_ch = Channel.fromPath(params.samplesheet)
+	| splitCsv(header:true)
+	 | map { bam_row ->
+        bam_meta = bam_row.subMap('sample')
+        [
+        	bam_meta, 
+        	file(bam_row.reads, checkIfExists: true),
+            file(bam_row.read_index, checkIfExists: true),
+            file(bam_row.peaks, checkIfExists: true)]
+    }
+	
+		train_chrombpnet(
+	train_ch,
+	prep_nonpeaks.out,
+	"${baseDir}/${params.fasta}", 
+	"${baseDir}/${params.chrom_sizes}", 
+	prep_splits.out,
+	train_bias.out.model
 	)
 }
