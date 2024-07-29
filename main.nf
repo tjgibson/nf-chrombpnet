@@ -331,10 +331,10 @@ workflow {
 	
 		train_chrombpnet(
 	train_ch,
-	prep_nonpeaks.out,
+	prep_nonpeaks.out.first(),
 	"${launchDir}/${params.fasta}", 
 	"${launchDir}/${params.chrom_sizes}", 
-	prep_splits.out,
-	bias_model_ch
+	prep_splits.out.first(),
+	bias_model_ch.first()
 	)
 }
