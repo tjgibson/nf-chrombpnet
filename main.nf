@@ -8,9 +8,6 @@ log.info """
 	"""
 	.stripIndent()
 
-/*
- * generate empty dummy files to use for optional parameters
- */
 
 
 /*
@@ -181,7 +178,7 @@ log.info """
         -fl $chrom_splits \
         -b 0.5 \
         -o . \
-        -fp bias
+        -fp $meta.sample
     """
  }
  
@@ -306,13 +303,20 @@ workflow {
 	combine_exclude_regions.out
 	)
 
-	train_bias(
+	if (params.bias_model) {
+	bias_model_ch = channel.fromPath(params.bias_model, checkIfExists: true)
+	}
+	else {
+	bias_model_ch = train_bias(
 	bias_ch,
 	prep_nonpeaks.out,
 	"${launchDir}/${params.fasta}", 
 	"${launchDir}/${params.chrom_sizes}", 
 	prep_splits.out
 	)
+	}
+	
+	
 	
 	train_ch = Channel.fromPath(params.samplesheet)
 	| splitCsv(header:true)
