@@ -317,7 +317,6 @@ workflow {
 	}
 	
 	
-	
 	train_ch = Channel.fromPath(params.samplesheet)
 	| splitCsv(header:true)
 	 | map { bam_row ->
@@ -329,12 +328,13 @@ workflow {
             file(bam_row.peaks, checkIfExists: true)]
     }
 	
+	
 		train_chrombpnet(
 	train_ch,
 	prep_nonpeaks.out,
 	"${launchDir}/${params.fasta}", 
 	"${launchDir}/${params.chrom_sizes}", 
 	prep_splits.out,
-	train_bias.out.model
+	bias_model_ch
 	)
 }
