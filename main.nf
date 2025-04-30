@@ -112,7 +112,8 @@ log.info """
 	
 	script:
     """
-    cat peaks/*_peaks.txt | cut -f 1,2,3 > combined_exclude_regions.bed
+    cat peaks/*_peaks.txt | cut -f 1,2,3 | sort -k1,1 -k2,2n > combined_exclude_regions_unmerged.bed
+    bedtools merge -d 1000 -i combined_exclude_regions_unmerged.bed > combined_exclude_regions.bed
     """
 }
 
@@ -271,15 +272,15 @@ workflow {
 	}
 	
 	
-	combine_exclude_ch = Channel.fromPath(params.samplesheet)
-	| splitCsv(header:true)
-	| map { row -> 
-	peaks = [file(row.peaks, checkIfExists: true)] 
-	}
-	| mix(blacklist_ch, exclude_ch)
-	| collect
-	
-	combine_exclude_regions(combine_exclude_ch)
+# 	combine_exclude_ch = Channel.fromPath(params.samplesheet)
+# 	| splitCsv(header:true)
+# 	| map { row -> 
+# 	peaks = [file(row.peaks, checkIfExists: true)] 
+# 	}
+# 	| mix(blacklist_ch, exclude_ch)
+# 	| collect
+# 	
+# 	combine_exclude_regions(combine_exclude_ch)
 	
 
 	bias_ch = Channel.fromPath(params.samplesheet)
@@ -300,7 +301,7 @@ workflow {
 	"${launchDir}/${params.fasta}", 
 	"${launchDir}/${params.chrom_sizes}", 
 	prep_splits.out,
-	combine_exclude_regions.out
+	blacklist_ch
 	)
 
 	if (params.bias_model) {
