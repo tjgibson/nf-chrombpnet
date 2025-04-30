@@ -272,15 +272,15 @@ workflow {
 	}
 	
 	
-# 	combine_exclude_ch = Channel.fromPath(params.samplesheet)
-# 	| splitCsv(header:true)
-# 	| map { row -> 
-# 	peaks = [file(row.peaks, checkIfExists: true)] 
-# 	}
-# 	| mix(blacklist_ch, exclude_ch)
-# 	| collect
-# 	
-# 	combine_exclude_regions(combine_exclude_ch)
+// 	combine_exclude_ch = Channel.fromPath(params.samplesheet)
+// 	| splitCsv(header:true)
+// 	| map { row -> 
+// 	peaks = [file(row.peaks, checkIfExists: true)] 
+// 	}
+// 	| mix(blacklist_ch, exclude_ch)
+// 	| collect
+// 	
+// 	combine_exclude_regions(combine_exclude_ch)
 	
 
 	bias_ch = Channel.fromPath(params.samplesheet)
